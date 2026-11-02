@@ -148,6 +148,7 @@ export const DOMAINS: DomainDef[] = [
       GMAIL_ACTIONS.join(', ') +
       '. account = email of the Google account to use (default: primary).',
     actions: GMAIL_ACTIONS,
+    localOnlyInputProps: ['localPath'],
     inputProps: {
       query: { type: 'string' },
       messageId: { type: 'string' },
@@ -155,6 +156,19 @@ export const DOMAINS: DomainDef[] = [
         type: 'string',
         description:
           'Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message)'
+      },
+      attachmentId: {
+        type: 'string',
+        description: 'Attachment id from gmail.get (format "full") -- for downloadAttachment'
+      },
+      filename: {
+        type: 'string',
+        description: 'Attachment filename as listed by gmail.get; alternative to attachmentId for downloadAttachment'
+      },
+      localPath: {
+        type: 'string',
+        description:
+          'Absolute local destination for downloadAttachment. Local stdio only; omit to receive the content inline (text, extracted PDF text, or base64).'
       },
       to: { type: 'string' },
       subject: { type: 'string' },

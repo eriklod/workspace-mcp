@@ -93,6 +93,70 @@ interface GmailAttachment {
   size: number | null | undefined;
 }
 
+// Inline attachment rendering for remote callers, which have no access to the
+// server's filesystem. Text-like types come back as text, PDFs as extracted text
+// (falling back to base64 when extraction fails), everything else as base64.
+const INLINE_TEXT_LIMIT = 200_000;
+
+function isTextLike(mimeType: string, filename: string): boolean {
+  const ext = path.extname(filename).toLowerCase();
+  return (
+    mimeType.startsWith('text/') ||
+    /[/+](json|xml|csv|yaml|x-yaml)$/i.test(mimeType) ||
+    ['.txt', '.csv', '.tsv', '.json', '.xml', '.md', '.yaml', '.yml', '.ics', '.log'].includes(ext)
+  );
+}
+
+function truncate(text: string): { text: string; truncated: boolean } {
+  if (text.length <= INLINE_TEXT_LIMIT) return { text, truncated: false };
+  return { text: text.slice(0, INLINE_TEXT_LIMIT), truncated: true };
+}
+
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  const { extractText, getDocumentProxy } = await import('unpdf');
+  const pdf = await getDocumentProxy(new Uint8Array(buffer));
+  const { text } = await extractText(pdf, { mergePages: true });
+  return text;
+}
+
+export async function renderAttachmentInline(
+  buffer: Buffer,
+  part: { attachmentId: string; filename: string; mimeType: string },
+): Promise<Record<string, unknown>> {
+  const base = {
+    attachmentId: part.attachmentId,
+    filename: part.filename,
+    mimeType: part.mimeType,
+    size: buffer.length,
+  };
+  const isPdf =
+    part.mimeType === 'application/pdf' ||
+    path.extname(part.filename).toLowerCase() === '.pdf';
+  if (isPdf) {
+    try {
+      const { text, truncated } = truncate(await extractPdfText(buffer));
+      if (text.trim().length > 0) {
+        return { ...base, encoding: 'text', source: 'pdf-text', text, truncated };
+      }
+    } catch (error) {
+      logToFile(
+        `PDF text extraction failed for ${part.filename}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return {
+      ...base,
+      encoding: 'base64',
+      note: 'No extractable text (scanned PDF or extraction failed); content is base64.',
+      data: buffer.toString('base64'),
+    };
+  }
+  if (isTextLike(part.mimeType, part.filename)) {
+    const { text, truncated } = truncate(buffer.toString('utf-8'));
+    return { ...base, encoding: 'text', text, truncated };
+  }
+  return { ...base, encoding: 'base64', data: buffer.toString('base64') };
+}
+
 export class GmailService {
   constructor(private authManager: AuthManager) {}
 
@@ -253,53 +317,120 @@ export class GmailService {
     }
   };
 
+  /**
+   * Find one attachment part of a message by attachmentId or filename. Returns the
+   * part's attachmentId, filename and mimeType so the download can label its result.
+   */
+  private async resolveAttachment(
+    gmail: gmail_v1.Gmail,
+    messageId: string,
+    attachmentId?: string,
+    filename?: string,
+  ): Promise<{ attachmentId: string; filename: string; mimeType: string }> {
+    const response = await gmail.users.messages.get({
+      userId: 'me',
+      id: messageId,
+      format: 'full',
+    });
+    const { attachments } = this.extractAttachmentsAndBody(
+      response.data.payload ?? {},
+    );
+    const match = attachments.find((a) =>
+      attachmentId
+        ? a.attachmentId === attachmentId
+        : filename !== undefined &&
+          (a.filename ?? '').toLowerCase() === filename.toLowerCase(),
+    );
+    if (!match || !match.attachmentId) {
+      const available = attachments
+        .map((a) => `${a.filename ?? '(no name)'} [${a.attachmentId ?? '?'}]`)
+        .join(', ');
+      throw new Error(
+        `Attachment not found on message ${messageId}. Available: ${available || 'none'}.`,
+      );
+    }
+    return {
+      attachmentId: match.attachmentId,
+      filename: match.filename ?? 'attachment',
+      mimeType: match.mimeType ?? 'application/octet-stream',
+    };
+  }
+
+  /**
+   * Download one attachment. Without `localPath` (the only mode over HTTP) the
+   * content comes back inline: text for text-like types, extracted text for PDFs,
+   * base64 otherwise. With `localPath` (stdio only) the bytes are written to disk.
+   */
   public downloadAttachment = async ({
     messageId,
     attachmentId,
+    filename,
     localPath,
   }: {
     messageId: string;
-    attachmentId: string;
-    localPath: string;
+    attachmentId?: string;
+    filename?: string;
+    localPath?: string;
   }) => {
     try {
-      logToFile(
-        `Downloading attachment ${attachmentId} from message ${messageId} to ${localPath}`,
-      );
-
-      if (!path.isAbsolute(localPath)) {
+      if (!attachmentId && !filename) {
+        throw new Error(
+          'Provide attachmentId or filename (both come from gmail.get with format "full").',
+        );
+      }
+      if (localPath !== undefined && !path.isAbsolute(localPath)) {
         throw new Error('localPath must be an absolute path.');
       }
 
       const gmail = await this.getGmailClient();
+      const part = await this.resolveAttachment(
+        gmail,
+        messageId,
+        attachmentId,
+        filename,
+      );
+      logToFile(
+        `Downloading attachment ${part.attachmentId} (${part.filename}) from message ${messageId}`,
+      );
+
       const response = await gmail.users.messages.attachments.get({
         userId: 'me',
         messageId: messageId,
-        id: attachmentId,
+        id: part.attachmentId,
       });
 
       const data = response.data.data;
       if (!data) {
         throw new Error('Attachment data is empty');
       }
-
-      // Ensure directory exists
-      await fs.mkdir(path.dirname(localPath), { recursive: true });
-
-      // Write file
       const buffer = Buffer.from(data, 'base64url');
-      await fs.writeFile(localPath, buffer);
 
-      logToFile(`Attachment downloaded successfully to ${localPath}`);
+      if (localPath !== undefined) {
+        await fs.mkdir(path.dirname(localPath), { recursive: true });
+        await fs.writeFile(localPath, buffer);
+        logToFile(`Attachment downloaded successfully to ${localPath}`);
+        return {
+          content: [
+            {
+              type: 'text' as const,
+              text: JSON.stringify({
+                message: `Attachment downloaded successfully to ${localPath}`,
+                path: localPath,
+                filename: part.filename,
+                mimeType: part.mimeType,
+                size: buffer.length,
+              }),
+            },
+          ],
+        };
+      }
 
+      const result = await renderAttachmentInline(buffer, part);
       return {
         content: [
           {
             type: 'text' as const,
-            text: JSON.stringify({
-              message: `Attachment downloaded successfully to ${localPath}`,
-              path: localPath,
-            }),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
