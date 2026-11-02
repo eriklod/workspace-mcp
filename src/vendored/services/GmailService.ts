@@ -79,10 +79,10 @@ type SendEmailParams = {
   bcc?: string | string[];
   replyTo?: string;
   isHtml?: boolean;
+  threadId?: string;
 };
 
 type CreateDraftParams = SendEmailParams & {
-  threadId?: string;
   attachments?: AttachmentInput[];
 };
 
@@ -508,6 +508,51 @@ export class GmailService {
     }
   }
 
+  // Looks up the last message of a thread so a new message can carry the
+  // In-Reply-To / References headers that make it a real reply (Gmail's own
+  // threading needs these, not just the threadId on the request body).
+  private async resolveReplyHeaders(
+    gmail: gmail_v1.Gmail,
+    threadId: string | undefined,
+  ): Promise<{ inReplyTo?: string; references?: string }> {
+    if (!threadId) {
+      return {};
+    }
+    try {
+      const threadResponse = await gmail.users.threads.get({
+        userId: 'me',
+        id: threadId,
+        format: 'metadata',
+        metadataHeaders: ['Message-ID', 'References'],
+      });
+      const messages = threadResponse.data.messages || [];
+      if (messages.length > 0) {
+        const lastMessage = messages[messages.length - 1];
+        const headers = lastMessage.payload?.headers || [];
+        const messageIdHeader = headers.find(
+          (h) => h.name?.toLowerCase() === 'message-id',
+        );
+        const referencesHeader = headers.find(
+          (h) => h.name?.toLowerCase() === 'references',
+        );
+        if (messageIdHeader?.value) {
+          const previousReferences = referencesHeader?.value || '';
+          return {
+            inReplyTo: messageIdHeader.value,
+            references: previousReferences
+              ? `${previousReferences} ${messageIdHeader.value}`
+              : messageIdHeader.value,
+          };
+        }
+      }
+    } catch (threadError) {
+      logToFile(
+        `Warning: Could not fetch thread ${threadId} for reply headers: ${threadError}`,
+      );
+    }
+    return {};
+  }
+
   public send = async ({
     to,
     subject,
@@ -516,6 +561,7 @@ export class GmailService {
     bcc,
     replyTo,
     isHtml = false,
+    threadId,
   }: SendEmailParams) => {
     try {
       // Validate email addresses
@@ -531,6 +577,14 @@ export class GmailService {
 
       logToFile(`Sending email to: ${to}, subject: ${subject}`);
 
+      const gmail = await this.getGmailClient();
+
+      // If threadId is provided, send as a reply inside that thread
+      const { inReplyTo, references } = await this.resolveReplyHeaders(
+        gmail,
+        threadId,
+      );
+
       // Create MIME message
       const mimeMessage = MimeHelper.createMimeMessage({
         to: Array.isArray(to) ? to.join(', ') : to,
@@ -540,13 +594,15 @@ export class GmailService {
         bcc: bcc ? (Array.isArray(bcc) ? bcc.join(', ') : bcc) : undefined,
         replyTo,
         isHtml,
+        inReplyTo,
+        references,
       });
 
-      const gmail = await this.getGmailClient();
       const response = await gmail.users.messages.send({
         userId: 'me',
         requestBody: {
           raw: mimeMessage,
+          ...(threadId && { threadId }),
         },
       });
 
@@ -602,40 +658,10 @@ export class GmailService {
       const gmail = await this.getGmailClient();
 
       // If threadId is provided, fetch the last message to get reply headers
-      let inReplyTo: string | undefined;
-      let references: string | undefined;
-      if (threadId) {
-        try {
-          const threadResponse = await gmail.users.threads.get({
-            userId: 'me',
-            id: threadId,
-            format: 'metadata',
-            metadataHeaders: ['Message-ID', 'References'],
-          });
-          const messages = threadResponse.data.messages || [];
-          if (messages.length > 0) {
-            const lastMessage = messages[messages.length - 1];
-            const headers = lastMessage.payload?.headers || [];
-            const messageIdHeader = headers.find(
-              (h) => h.name?.toLowerCase() === 'message-id',
-            );
-            const referencesHeader = headers.find(
-              (h) => h.name?.toLowerCase() === 'references',
-            );
-            if (messageIdHeader?.value) {
-              inReplyTo = messageIdHeader.value;
-              const previousReferences = referencesHeader?.value || '';
-              references = previousReferences
-                ? `${previousReferences} ${messageIdHeader.value}`
-                : messageIdHeader.value;
-            }
-          }
-        } catch (threadError) {
-          logToFile(
-            `Warning: Could not fetch thread ${threadId} for reply headers: ${threadError}`,
-          );
-        }
-      }
+      const { inReplyTo, references } = await this.resolveReplyHeaders(
+        gmail,
+        threadId,
+      );
 
       // Create MIME message
       let mimeMessage: string;

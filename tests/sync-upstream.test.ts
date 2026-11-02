@@ -25,6 +25,7 @@ describe('parseNotice', () => {
       'src/vendored/services/CalendarService.ts',
       'src/vendored/services/CalendarValidation.ts',
       'src/vendored/services/DriveService.ts',
+      'src/vendored/services/GmailService.ts',
       'src/vendored/services/SheetsService.ts',
       'src/vendored/utils/MimeHelper.ts',
       'src/vendored/utils/validation.ts'

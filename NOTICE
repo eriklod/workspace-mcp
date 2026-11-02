@@ -28,6 +28,10 @@ as CONFLICT and leaves them alone; whoever syncs merges them by hand:
   (`.substring(7)` on a short `Math.random().toString(36)`, e.g. 0.5 -> "0.i"), so two messages
   built in the same millisecond collided on their boundary. Now a randomUUID-derived suffix.
 - src/vendored/utils/validation.ts — optimization: Date.parse vs new Date().getTime()
+- src/vendored/services/GmailService.ts — `send` accepts `threadId` like `createDraft` already did:
+  reply headers (In-Reply-To/References) are resolved from the thread's last message via a shared
+  `resolveReplyHeaders` helper, and `threadId` is passed on the send request. Without this a
+  "reply" sent through `send` started a new thread.
 
 ## Files that replace an upstream file (ours, never synced)
 

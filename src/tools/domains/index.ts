@@ -151,7 +151,11 @@ export const DOMAINS: DomainDef[] = [
     inputProps: {
       query: { type: 'string' },
       messageId: { type: 'string' },
-      threadId: { type: 'string' },
+      threadId: {
+        type: 'string',
+        description:
+          'Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message)'
+      },
       to: { type: 'string' },
       subject: { type: 'string' },
       body: { type: 'string' },

@@ -350,7 +350,8 @@
             "type": "string"
           },
           "threadId": {
-            "type": "string"
+            "type": "string",
+            "description": "Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message)"
           },
           "to": {
             "type": "string"
