@@ -176,7 +176,11 @@ export const DOMAINS: DomainDef[] = [
       draftId: { type: 'string' },
       labelIds: { type: 'array' },
       messageIds: { type: 'array', items: { type: 'string' }, description: 'Message ids for batchModify' },
-      addLabelIds: { type: 'array', items: { type: 'string' }, description: 'Labels to add (modify, batchModify, modifyThread)' },
+      addLabelIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Labels to add (modify, batchModify, modifyThread)'
+      },
       removeLabelIds: {
         type: 'array',
         items: { type: 'string' },
