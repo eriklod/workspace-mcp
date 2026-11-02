@@ -39,3 +39,11 @@ Example:
 { "action": "downloadAttachment", "messageId": "18f...", "attachmentId": "ANGjdJ..." }
 { "action": "downloadAttachment", "messageId": "18f...", "filename": "factuur-2026-1043.pdf" }
 ```
+
+## modify / batchModify / modifyThread
+
+- modify: messageId + addLabelIds / removeLabelIds
+- batchModify: messageIds (array) + addLabelIds / removeLabelIds — one call per mailbox (`account`)
+- modifyThread: threadId + addLabelIds / removeLabelIds
+
+Archiving is `removeLabelIds: ["INBOX"]`; marking read is `removeLabelIds: ["UNREAD"]`. Nothing is deleted by these actions.

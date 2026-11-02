@@ -175,6 +175,13 @@ export const DOMAINS: DomainDef[] = [
       body: { type: 'string' },
       draftId: { type: 'string' },
       labelIds: { type: 'array' },
+      messageIds: { type: 'array', items: { type: 'string' }, description: 'Message ids for batchModify' },
+      addLabelIds: { type: 'array', items: { type: 'string' }, description: 'Labels to add (modify, batchModify, modifyThread)' },
+      removeLabelIds: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Labels to remove (modify, batchModify, modifyThread); ["INBOX"] archives'
+      },
       maxResults: { type: 'number', description: 'Maximum messages returned per page (bounded by Gmail)' },
       pageToken: { type: 'string', description: 'Continuation token from a previous search page' },
       includeSpamTrash: { type: 'boolean', description: 'Include spam and trash in search results' },
