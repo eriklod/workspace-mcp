@@ -263,6 +263,195 @@ export class SheetsService {
     }
   };
 
+  private fail(method: string, error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    logToFile(`[SheetsService] Error during sheets.${method}: ${errorMessage}`);
+    return {
+      content: [{ type: 'text' as const, text: JSON.stringify({ error: errorMessage }) }],
+    };
+  }
+
+  private static assertValues(values: unknown): string[][] {
+    if (
+      !Array.isArray(values) ||
+      values.length === 0 ||
+      !values.every((row) => Array.isArray(row))
+    ) {
+      throw new Error(
+        'values must be a non-empty array of rows, each row an array of cell values, e.g. [["A1","B1"],["A2","B2"]].',
+      );
+    }
+    return values.map((row: unknown[]) =>
+      row.map((cell) => (cell === null || cell === undefined ? '' : String(cell))),
+    );
+  }
+
+  /**
+   * Writes a block of values starting at the top-left cell of `range`. Cells
+   * are parsed as if typed by the user (USER_ENTERED), so "=SUM(A1:A3)" becomes
+   * a formula and "12-03-2026" a date. Pass valueInputOption "RAW" to store
+   * strings verbatim.
+   */
+  public updateRange = async ({
+    spreadsheetId,
+    range,
+    values,
+    valueInputOption = 'USER_ENTERED',
+  }: {
+    spreadsheetId: string;
+    range: string;
+    values: unknown;
+    valueInputOption?: 'USER_ENTERED' | 'RAW';
+  }) => {
+    logToFile(
+      `[SheetsService] Starting updateRange for spreadsheet: ${spreadsheetId}, range: ${range}`,
+    );
+    try {
+      const id = extractDocId(spreadsheetId) || spreadsheetId;
+      if (!range) throw new Error('range is required (A1 notation, e.g. "Blad1!A2:C2").');
+      const rows = SheetsService.assertValues(values);
+      const sheets = await this.getSheetsClient();
+      const response = await sheets.spreadsheets.values.update({
+        spreadsheetId: id,
+        range,
+        valueInputOption,
+        requestBody: { values: rows },
+      });
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              updatedRange: response.data.updatedRange,
+              updatedRows: response.data.updatedRows,
+              updatedColumns: response.data.updatedColumns,
+              updatedCells: response.data.updatedCells,
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      return this.fail('updateRange', error);
+    }
+  };
+
+  /**
+   * Appends rows below the last non-empty row of the table that `range`
+   * points at (a sheet name such as "Blad1" appends to that tab).
+   */
+  public appendRows = async ({
+    spreadsheetId,
+    range,
+    values,
+    valueInputOption = 'USER_ENTERED',
+  }: {
+    spreadsheetId: string;
+    range: string;
+    values: unknown;
+    valueInputOption?: 'USER_ENTERED' | 'RAW';
+  }) => {
+    logToFile(
+      `[SheetsService] Starting appendRows for spreadsheet: ${spreadsheetId}, range: ${range}`,
+    );
+    try {
+      const id = extractDocId(spreadsheetId) || spreadsheetId;
+      if (!range) throw new Error('range is required (a sheet name or A1 range, e.g. "Blad1" or "Blad1!A:D").');
+      const rows = SheetsService.assertValues(values);
+      const sheets = await this.getSheetsClient();
+      const response = await sheets.spreadsheets.values.append({
+        spreadsheetId: id,
+        range,
+        valueInputOption,
+        insertDataOption: 'INSERT_ROWS',
+        requestBody: { values: rows },
+      });
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              updatedRange: response.data.updates?.updatedRange,
+              updatedRows: response.data.updates?.updatedRows,
+              updatedCells: response.data.updates?.updatedCells,
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      return this.fail('appendRows', error);
+    }
+  };
+
+  /** Clears the values in `range`; formatting stays. */
+  public clearRange = async ({
+    spreadsheetId,
+    range,
+  }: {
+    spreadsheetId: string;
+    range: string;
+  }) => {
+    logToFile(
+      `[SheetsService] Starting clearRange for spreadsheet: ${spreadsheetId}, range: ${range}`,
+    );
+    try {
+      const id = extractDocId(spreadsheetId) || spreadsheetId;
+      if (!range) throw new Error('range is required (A1 notation).');
+      const sheets = await this.getSheetsClient();
+      const response = await sheets.spreadsheets.values.clear({
+        spreadsheetId: id,
+        range,
+        requestBody: {},
+      });
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({ clearedRange: response.data.clearedRange }),
+          },
+        ],
+      };
+    } catch (error) {
+      return this.fail('clearRange', error);
+    }
+  };
+
+  /** Creates a new spreadsheet, optionally with named tabs. */
+  public create = async ({
+    title,
+    sheetTitles,
+  }: {
+    title: string;
+    sheetTitles?: string[];
+  }) => {
+    logToFile(`[SheetsService] Starting create: ${title}`);
+    try {
+      if (!title) throw new Error('title is required.');
+      const sheets = await this.getSheetsClient();
+      const response = await sheets.spreadsheets.create({
+        requestBody: {
+          properties: { title },
+          sheets: Array.isArray(sheetTitles) && sheetTitles.length
+            ? sheetTitles.map((t) => ({ properties: { title: String(t) } }))
+            : undefined,
+        },
+      });
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify({
+              spreadsheetId: response.data.spreadsheetId,
+              spreadsheetUrl: response.data.spreadsheetUrl,
+              sheets: response.data.sheets?.map((s) => s.properties?.title),
+            }),
+          },
+        ],
+      };
+    } catch (error) {
+      return this.fail('create', error);
+    }
+  };
+
   public getMetadata = async ({ spreadsheetId }: { spreadsheetId: string }) => {
     logToFile(
       `[SheetsService] Starting getMetadata for spreadsheet: ${spreadsheetId}`,

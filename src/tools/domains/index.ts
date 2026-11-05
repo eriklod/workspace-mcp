@@ -217,7 +217,22 @@ export const DOMAINS: DomainDef[] = [
     actions: SHEETS_ACTIONS,
     inputProps: {
       spreadsheetId: { type: 'string' },
-      range: { type: 'string' }
+      range: {
+        type: 'string',
+        description: 'A1 notation, e.g. "Blad1!A2:C5"; for appendRows a sheet name or table range'
+      },
+      values: {
+        type: 'array',
+        items: { type: 'array', items: {} },
+        description: 'Rows of cell values for updateRange/appendRows, e.g. [["a","b"],["c","d"]]'
+      },
+      valueInputOption: {
+        type: 'string',
+        enum: ['USER_ENTERED', 'RAW'],
+        description: 'USER_ENTERED (default) parses formulas/dates like typing; RAW stores strings verbatim'
+      },
+      title: { type: 'string', description: 'Spreadsheet title (create)' },
+      sheetTitles: { type: 'array', items: { type: 'string' }, description: 'Tab names (create, optional)' }
     },
     run: sheets
   },
