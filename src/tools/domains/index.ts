@@ -114,9 +114,17 @@ export const DOMAINS: DomainDef[] = [
       eventId: { type: 'string' },
       summary: { type: 'string' },
       description: { type: 'string' },
-      start: { type: 'string' },
-      end: { type: 'string' },
-      attendees: { type: 'array' }
+      start: {
+        type: 'string',
+        description:
+          'Event start: ISO 8601 with offset for timed events (2026-11-13T09:27:00+01:00) or YYYY-MM-DD for all-day events'
+      },
+      end: {
+        type: 'string',
+        description:
+          'Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events'
+      },
+      attendees: { type: 'array', description: 'Attendee email addresses' }
     },
     run: calendar
   },
