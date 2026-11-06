@@ -1,0 +1,26 @@
+# Keeps the Railway deployment and its edge connection warm.
+#
+# Three mornings in a row the claude.ai connector failed to load at 06:30 after a
+# night without traffic, while hourly probes from 03:15 on fixed it. A request
+# every ten minutes keeps the path warm around the clock. GitHub schedules can
+# lag a few minutes under load; that is fine here.
+name: keepalive
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: GET /health
+        run: |
+          url="https://workspace-mcp-production-7cb9.up.railway.app/health"
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 25 "$url" || echo "000")
+          echo "health: HTTP $code"
+          test "$code" = "200"
