@@ -43,7 +43,7 @@ Example:
 
 ## forward
 
-Forwards an existing message, attachments included, as a new conversation (no threadId: at the recipient it starts a new thread). The original is read raw; every real attachment (pdf, docx, ...) is carried over with its original filename and content type. Inline images that belong to the HTML body are dropped.
+Forwards an existing message, attachments included, the way Gmail's own "Forward" does: in the sender's mailbox the forward lands in the same conversation as the original (Gmail shows the forward arrow there), while at the recipient it always starts a new conversation, since they never had that thread. The server sends it with the original's `threadId` and sets `In-Reply-To` to the original's Message-ID and `References` to the original's References plus that Message-ID. The original is read raw; every real attachment (pdf, docx, ...) is carried over with its original filename and content type. Inline images that belong to the HTML body are dropped.
 
 Parameters:
 - messageId (required): the message to forward
@@ -51,13 +51,15 @@ Parameters:
 - subject (optional): defaults to "Fwd: " + the original subject (no second "Fwd:" when it already starts with one)
 - body (optional): cover text placed above the forwarded message
 - includeOriginalText (optional, default true): append the original plain text under `---------- Doorgestuurd bericht ----------` with Van/Datum/Onderwerp/Aan
+- inThread (optional, default true): file the forward in the original's conversation in the sender's mailbox. `false` sends a standalone message: no threadId, no In-Reply-To/References
 
-Result: `{ id, threadId, to, subject, attachments: [{ filename, mimeType, size }] }`.
+Result: `{ id, threadId, to, subject, attachments: [{ filename, mimeType, size }] }` (`threadId` equals the original's thread unless `inThread: false`).
 
 Example:
 ```
 { "action": "forward", "messageId": "18f...", "to": "boekhouding@example.com", "body": "Zie bijgaande factuur." }
 { "action": "forward", "account": "werk@example.com", "messageId": "18f...", "to": "a@example.com, b@example.com", "includeOriginalText": false }
+{ "action": "forward", "messageId": "18f...", "to": "a@example.com", "inThread": false }
 ```
 
 ## modify / batchModify / modifyThread

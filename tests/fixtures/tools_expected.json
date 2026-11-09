@@ -321,7 +321,7 @@
     },
     {
       "name": "gmail",
-      "description": "Gmail operations. Actions: search, get, downloadAttachment, modify, batchModify, modifyThread, send, createDraft, sendDraft, forward, listLabels, createLabel. account = email of the Google account to use (default: primary).",
+      "description": "Gmail operations. Actions: search, get, downloadAttachment, modify, batchModify, modifyThread, send, createDraft, sendDraft, forward, listLabels, createLabel. forward files the forward in the original's conversation in the sender's mailbox (inThread, default true); the recipient always gets a new conversation. account = email of the Google account to use (default: primary).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -355,7 +355,7 @@
           },
           "threadId": {
             "type": "string",
-            "description": "Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message)"
+            "description": "Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message). Not used by forward, which takes the thread of messageId (see inThread)"
           },
           "attachmentId": {
             "type": "string",
@@ -384,6 +384,10 @@
           "includeOriginalText": {
             "type": "boolean",
             "description": "forward only (default true): append the original text under a \"Doorgestuurd bericht\" header with Van/Datum/Onderwerp/Aan"
+          },
+          "inThread": {
+            "type": "boolean",
+            "description": "forward only (default true): file the forward in the original's conversation in the sender's mailbox (threadId + In-Reply-To/References), like Gmail's own Forward. The recipient always gets a new conversation. false = standalone message"
           },
           "draftId": {
             "type": "string"

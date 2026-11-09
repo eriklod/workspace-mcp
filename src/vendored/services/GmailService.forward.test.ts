@@ -28,6 +28,8 @@ function rawOriginal(): string {
     'Date: Mon, 2 Nov 2026 10:15:00 +0100',
     'Subject: Factuur 1043',
     'Message-ID: <orig-1043@leverancier.nl>',
+    'In-Reply-To: <vraag-1042@example.com>',
+    'References: <start-1041@example.com> <vraag-1042@example.com>',
     'MIME-Version: 1.0',
     `Content-Type: multipart/mixed; boundary="${boundary}"`,
     '',
@@ -62,8 +64,8 @@ describe('GmailService.forward', () => {
   beforeEach(() => {
     messagesGet.mockReset()
     messagesSend.mockReset()
-    messagesGet.mockResolvedValue({ data: { id: 'orig-1', raw: rawOriginal() } })
-    messagesSend.mockResolvedValue({ data: { id: 'new-1', threadId: 'thread-new' } })
+    messagesGet.mockResolvedValue({ data: { id: 'orig-1', threadId: 'thread-orig', raw: rawOriginal() } })
+    messagesSend.mockResolvedValue({ data: { id: 'new-1', threadId: 'thread-orig' } })
     service = new GmailService(new AuthManager(['scope']))
   })
 
@@ -77,14 +79,19 @@ describe('GmailService.forward', () => {
     expect(messagesGet).toHaveBeenCalledWith({ userId: 'me', id: 'orig-1', format: 'raw' })
     const request = messagesSend.mock.calls[0][0]
     expect(request.userId).toBe('me')
-    expect(request.requestBody.threadId).toBeUndefined()
+    expect(request.requestBody.threadId).toBe('thread-orig')
 
     const sent = await sentMessage()
     expect(sent.subject).toBe('Fwd: Factuur 1043')
     expect(sent.to && !Array.isArray(sent.to) ? sent.to.text : '').toBe(
       'boekhouding@example.com, accountant@example.com'
     )
-    expect(sent.inReplyTo).toBeUndefined()
+    expect(sent.inReplyTo).toBe('<orig-1043@leverancier.nl>')
+    expect(sent.references).toEqual([
+      '<start-1041@example.com>',
+      '<vraag-1042@example.com>',
+      '<orig-1043@leverancier.nl>'
+    ])
     expect(sent.text).toContain('Zie bijgaande factuur.')
     expect(sent.text).toContain('---------- Doorgestuurd bericht ----------')
     expect(sent.text).toContain('Van: Leverancier <facturen@leverancier.nl>')
@@ -99,11 +106,27 @@ describe('GmailService.forward', () => {
 
     expect(parseResult(result)).toEqual({
       id: 'new-1',
-      threadId: 'thread-new',
+      threadId: 'thread-orig',
       to: 'boekhouding@example.com, accountant@example.com',
       subject: 'Fwd: Factuur 1043',
       attachments: [{ filename: 'factuur-1043.pdf', mimeType: 'application/pdf', size: PDF_BYTES.length }]
     })
+  })
+
+  it('sends a standalone message with inThread: false', async () => {
+    messagesSend.mockResolvedValue({ data: { id: 'new-2', threadId: 'thread-new' } })
+    const result = await service.forward({ messageId: 'orig-1', to: 'a@example.com', inThread: false })
+
+    const request = messagesSend.mock.calls[0][0]
+    expect(request.requestBody).not.toHaveProperty('threadId')
+    const raw = Buffer.from(request.requestBody.raw, 'base64url').toString()
+    expect(raw).not.toMatch(/^In-Reply-To:/im)
+    expect(raw).not.toMatch(/^References:/im)
+    const sent = await sentMessage()
+    expect(sent.subject).toBe('Fwd: Factuur 1043')
+    expect(sent.text).toContain('---------- Doorgestuurd bericht ----------')
+    expect(sent.attachments).toHaveLength(1)
+    expect(parseResult(result).threadId).toBe('thread-new')
   })
 
   it('omits the original text when includeOriginalText is false and honours a custom subject', async () => {

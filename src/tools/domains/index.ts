@@ -153,7 +153,8 @@ export const DOMAINS: DomainDef[] = [
     description:
       'Gmail operations. Actions: ' +
       GMAIL_ACTIONS.join(', ') +
-      '. account = email of the Google account to use (default: primary).',
+      ". forward files the forward in the original's conversation in the sender's mailbox (inThread, default true); the recipient always gets a new conversation." +
+      ' account = email of the Google account to use (default: primary).',
     actions: GMAIL_ACTIONS,
     localOnlyInputProps: ['localPath'],
     inputProps: {
@@ -162,7 +163,7 @@ export const DOMAINS: DomainDef[] = [
       threadId: {
         type: 'string',
         description:
-          'Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message)'
+          'Thread id. For send/createDraft: reply inside this thread (In-Reply-To/References are set from its last message). Not used by forward, which takes the thread of messageId (see inThread)'
       },
       attachmentId: {
         type: 'string',
@@ -187,6 +188,11 @@ export const DOMAINS: DomainDef[] = [
         type: 'boolean',
         description:
           'forward only (default true): append the original text under a "Doorgestuurd bericht" header with Van/Datum/Onderwerp/Aan'
+      },
+      inThread: {
+        type: 'boolean',
+        description:
+          "forward only (default true): file the forward in the original's conversation in the sender's mailbox (threadId + In-Reply-To/References), like Gmail's own Forward. The recipient always gets a new conversation. false = standalone message"
       },
       draftId: { type: 'string' },
       labelIds: { type: 'array' },

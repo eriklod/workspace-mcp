@@ -93,6 +93,7 @@ type ForwardParams = {
   subject?: string;
   body?: string;
   includeOriginalText?: boolean;
+  inThread?: boolean;
 };
 
 const FORWARD_SEPARATOR = '---------- Doorgestuurd bericht ----------';
@@ -102,6 +103,20 @@ const FORWARD_SEPARATOR = '---------- Doorgestuurd bericht ----------';
 export function forwardSubject(original: string | undefined): string {
   const subject = (original ?? '').trim();
   return /^(fwd?|fw)\s*:/i.test(subject) ? subject : `Fwd: ${subject}`;
+}
+
+// In-Reply-To / References for a message that answers (or forwards) the
+// message with id `messageId`: References = its own References + its id.
+function buildReplyHeaders(
+  messageId: string,
+  previousReferences: string | undefined,
+): { inReplyTo: string; references: string } {
+  return {
+    inReplyTo: messageId,
+    references: previousReferences
+      ? `${previousReferences} ${messageId}`
+      : messageId,
+  };
 }
 
 // Accepts one address, a comma-separated string, or an array of addresses.
@@ -691,13 +706,10 @@ export class GmailService {
           (h) => h.name?.toLowerCase() === 'references',
         );
         if (messageIdHeader?.value) {
-          const previousReferences = referencesHeader?.value || '';
-          return {
-            inReplyTo: messageIdHeader.value,
-            references: previousReferences
-              ? `${previousReferences} ${messageIdHeader.value}`
-              : messageIdHeader.value,
-          };
+          return buildReplyHeaders(
+            messageIdHeader.value,
+            referencesHeader?.value ?? undefined,
+          );
         }
       }
     } catch (threadError) {
@@ -944,10 +956,11 @@ export class GmailService {
   };
 
   /**
-   * Forward an existing message as a new conversation. The original is
-   * fetched raw and parsed, its attachments are carried over (inline images
-   * that belong to the HTML body are dropped), and a fresh multipart/mixed
-   * message is sent. No threadId: at the recipient this is a new thread.
+   * Forward an existing message. The original is fetched raw and parsed, its
+   * attachments are carried over (inline images that belong to the HTML body
+   * are dropped), and a fresh multipart/mixed message is sent. With inThread
+   * (default) it lands in the original's thread in the sender's mailbox;
+   * at the recipient it is always a new conversation.
    */
   public forward = async ({
     messageId,
@@ -955,6 +968,7 @@ export class GmailService {
     subject,
     body,
     includeOriginalText = true,
+    inThread = true,
   }: ForwardParams) => {
     try {
       if (!messageId) {
@@ -1035,17 +1049,34 @@ export class GmailService {
         );
       }
 
+      // Like Gmail's own "Forward": in the sender's mailbox the forward joins
+      // the original's conversation, so it carries the original's threadId
+      // and In-Reply-To/References. The recipient never had that thread, so
+      // for them it is always a new conversation.
+      const threadId = inThread
+        ? original.data.threadId || undefined
+        : undefined;
+      const references = Array.isArray(parsed.references)
+        ? parsed.references.join(' ')
+        : parsed.references;
+      const replyHeaders =
+        inThread && parsed.messageId
+          ? buildReplyHeaders(parsed.messageId, references)
+          : {};
+
       const mimeMessage = MimeHelper.createMimeMessageWithAttachments({
         to: recipients.join(', '),
         subject: finalSubject,
         body: bodyParts.join('\n'),
         attachments,
+        ...replyHeaders,
       });
 
       const response = await gmail.users.messages.send({
         userId: 'me',
         requestBody: {
           raw: mimeMessage,
+          ...(threadId && { threadId }),
         },
       });
 
