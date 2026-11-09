@@ -33,7 +33,9 @@ as CONFLICT and leaves them alone; whoever syncs merges them by hand:
   `resolveReplyHeaders` helper, and `threadId` is passed on the send request. Without this a
   "reply" sent through `send` started a new thread.
   Also adds a `forward` action: the original is fetched raw, parsed with `mailparser`, and resent
-  as a new multipart/mixed message with its attachments carried over (no threadId).
+  as a new multipart/mixed message with its attachments carried over. By default (`inThread`) it
+  carries the original's threadId and In-Reply-To/References, built by the `buildReplyHeaders`
+  helper that `resolveReplyHeaders` now shares.
 
 ## Files that replace an upstream file (ours, never synced)
 
