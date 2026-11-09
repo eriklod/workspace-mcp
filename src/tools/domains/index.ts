@@ -121,8 +121,7 @@ export const DOMAINS: DomainDef[] = [
       },
       end: {
         type: 'string',
-        description:
-          'Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events'
+        description: 'Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events'
       },
       attendees: { type: 'array', description: 'Attendee email addresses' }
     },
@@ -178,9 +177,17 @@ export const DOMAINS: DomainDef[] = [
         description:
           'Absolute local destination for downloadAttachment. Local stdio only; omit to receive the content inline (text, extracted PDF text, or base64).'
       },
-      to: { type: 'string' },
-      subject: { type: 'string' },
-      body: { type: 'string' },
+      to: { type: 'string', description: 'Recipient(s); one address or comma-separated (send, createDraft, forward)' },
+      subject: {
+        type: 'string',
+        description: 'Subject. For forward: optional, defaults to "Fwd: " + original subject'
+      },
+      body: { type: 'string', description: 'Message body. For forward: optional cover text placed above the original' },
+      includeOriginalText: {
+        type: 'boolean',
+        description:
+          'forward only (default true): append the original text under a "Doorgestuurd bericht" header with Van/Datum/Onderwerp/Aan'
+      },
       draftId: { type: 'string' },
       labelIds: { type: 'array' },
       messageIds: { type: 'array', items: { type: 'string' }, description: 'Message ids for batchModify' },

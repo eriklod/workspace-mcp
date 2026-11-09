@@ -227,13 +227,16 @@
             "type": "string"
           },
           "start": {
-            "type": "string"
+            "type": "string",
+            "description": "Event start: ISO 8601 with offset for timed events (2026-11-13T09:27:00+01:00) or YYYY-MM-DD for all-day events"
           },
           "end": {
-            "type": "string"
+            "type": "string",
+            "description": "Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events"
           },
           "attendees": {
-            "type": "array"
+            "type": "array",
+            "description": "Attendee email addresses"
           }
         },
         "required": ["action"]
@@ -318,7 +321,7 @@
     },
     {
       "name": "gmail",
-      "description": "Gmail operations. Actions: search, get, downloadAttachment, modify, batchModify, modifyThread, send, createDraft, sendDraft, listLabels, createLabel. account = email of the Google account to use (default: primary).",
+      "description": "Gmail operations. Actions: search, get, downloadAttachment, modify, batchModify, modifyThread, send, createDraft, sendDraft, forward, listLabels, createLabel. account = email of the Google account to use (default: primary).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -334,6 +337,7 @@
               "send",
               "createDraft",
               "sendDraft",
+              "forward",
               "listLabels",
               "createLabel"
             ],
@@ -366,13 +370,20 @@
             "description": "Absolute local destination for downloadAttachment. Local stdio only; omit to receive the content inline (text, extracted PDF text, or base64)."
           },
           "to": {
-            "type": "string"
+            "type": "string",
+            "description": "Recipient(s); one address or comma-separated (send, createDraft, forward)"
           },
           "subject": {
-            "type": "string"
+            "type": "string",
+            "description": "Subject. For forward: optional, defaults to \"Fwd: \" + original subject"
           },
           "body": {
-            "type": "string"
+            "type": "string",
+            "description": "Message body. For forward: optional cover text placed above the original"
+          },
+          "includeOriginalText": {
+            "type": "boolean",
+            "description": "forward only (default true): append the original text under a \"Doorgestuurd bericht\" header with Van/Datum/Onderwerp/Aan"
           },
           "draftId": {
             "type": "string"

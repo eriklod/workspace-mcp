@@ -1,5 +1,5 @@
 import { CalendarService } from '../../vendored/services/CalendarService.js'
-import { makeDomainRun, type DomainRunInput } from './factory.js'
+import { type DomainRunInput, makeDomainRun } from './factory.js'
 
 export const CALENDAR_ACTIONS = [
   'listCalendars',
