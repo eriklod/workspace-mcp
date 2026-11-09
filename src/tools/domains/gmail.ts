@@ -11,6 +11,7 @@ export const GMAIL_ACTIONS = [
   'send',
   'createDraft',
   'sendDraft',
+  'forward',
   'listLabels',
   'createLabel'
 ] as const

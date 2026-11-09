@@ -18,6 +18,7 @@ import {
 import { gaxiosOptions } from '../utils/GaxiosConfig';
 import { emailArraySchema, gmailAttachmentSchema } from '../utils/validation';
 import { z, ZodError } from 'zod';
+import { simpleParser } from 'mailparser';
 
 // Extension to MIME type map for common file types
 const EXTENSION_MIME_MAP: Record<string, string> = {
@@ -85,6 +86,29 @@ type SendEmailParams = {
 type CreateDraftParams = SendEmailParams & {
   attachments?: AttachmentInput[];
 };
+
+type ForwardParams = {
+  messageId: string;
+  to: string | string[];
+  subject?: string;
+  body?: string;
+  includeOriginalText?: boolean;
+};
+
+const FORWARD_SEPARATOR = '---------- Doorgestuurd bericht ----------';
+
+// Prefix the original subject with "Fwd: " unless it already carries a
+// forward marker, so forwarding a forward does not stack "Fwd: Fwd: ".
+export function forwardSubject(original: string | undefined): string {
+  const subject = (original ?? '').trim();
+  return /^(fwd?|fw)\s*:/i.test(subject) ? subject : `Fwd: ${subject}`;
+}
+
+// Accepts one address, a comma-separated string, or an array of addresses.
+function splitRecipients(to: string | string[]): string[] {
+  const list = Array.isArray(to) ? to : to.split(',');
+  return list.map((addr) => addr.trim()).filter((addr) => addr.length > 0);
+}
 
 interface GmailAttachment {
   filename: string | null | undefined;
@@ -916,6 +940,141 @@ export class GmailService {
       };
     } catch (error) {
       return this.handleError(error, 'gmail.createDraft');
+    }
+  };
+
+  /**
+   * Forward an existing message as a new conversation. The original is
+   * fetched raw and parsed, its attachments are carried over (inline images
+   * that belong to the HTML body are dropped), and a fresh multipart/mixed
+   * message is sent. No threadId: at the recipient this is a new thread.
+   */
+  public forward = async ({
+    messageId,
+    to,
+    subject,
+    body,
+    includeOriginalText = true,
+  }: ForwardParams) => {
+    try {
+      if (!messageId) {
+        throw new Error(
+          'messageId is required for forward (the id of the message to forward, from gmail.search or gmail.get).',
+        );
+      }
+      const recipients = to ? splitRecipients(to) : [];
+      if (recipients.length === 0) {
+        throw new Error(
+          'to is required for forward (one address or a comma-separated list).',
+        );
+      }
+      const validationError = this.validateEmailAddresses({ to: recipients });
+      if (validationError) {
+        return validationError;
+      }
+
+      const gmail = await this.getGmailClient();
+      logToFile(`Forwarding message ${messageId} to: ${recipients.join(', ')}`);
+
+      const original = await gmail.users.messages.get({
+        userId: 'me',
+        id: messageId,
+        format: 'raw',
+      });
+      const raw = original.data.raw;
+      if (!raw) {
+        throw new Error(`Message ${messageId} has no raw content.`);
+      }
+      const parsed = await simpleParser(Buffer.from(raw, 'base64url'));
+
+      const attachments = parsed.attachments
+        .filter((att) => !att.related)
+        .map((att) => ({
+          filename: att.filename || 'attachment',
+          content: att.content,
+          contentType: att.contentType || 'application/octet-stream',
+        }));
+      assertWithinAttachmentSizeLimit(
+        attachments.reduce((sum, att) => sum + att.content.length, 0),
+      );
+
+      const finalSubject = subject || forwardSubject(parsed.subject);
+
+      const bodyParts: string[] = [];
+      if (body) {
+        bodyParts.push(body, '');
+      }
+      if (includeOriginalText) {
+        const addressText = (
+          value: typeof parsed.to | typeof parsed.from,
+        ): string =>
+          value === undefined
+            ? ''
+            : (Array.isArray(value) ? value : [value])
+                .flatMap((v) => v.value)
+                .map((a) =>
+                  a.name && a.address
+                    ? `${a.name} <${a.address}>`
+                    : a.address || a.name || '',
+                )
+                .join(', ');
+        const rawDate = parsed.headerLines.find(
+          (line) => line.key === 'date',
+        )?.line;
+        const date = rawDate
+          ? rawDate.replace(/^date:\s*/i, '')
+          : (parsed.date?.toUTCString() ?? '');
+        bodyParts.push(
+          FORWARD_SEPARATOR,
+          `Van: ${addressText(parsed.from)}`,
+          `Datum: ${date}`,
+          `Onderwerp: ${parsed.subject ?? ''}`,
+          `Aan: ${addressText(parsed.to)}`,
+          '',
+          parsed.text ?? '',
+        );
+      }
+
+      const mimeMessage = MimeHelper.createMimeMessageWithAttachments({
+        to: recipients.join(', '),
+        subject: finalSubject,
+        body: bodyParts.join('\n'),
+        attachments,
+      });
+
+      const response = await gmail.users.messages.send({
+        userId: 'me',
+        requestBody: {
+          raw: mimeMessage,
+        },
+      });
+
+      logToFile(`Message forwarded successfully: ${response.data.id}`);
+
+      return {
+        content: [
+          {
+            type: 'text' as const,
+            text: JSON.stringify(
+              {
+                id: response.data.id,
+                threadId: response.data.threadId,
+                to: recipients.join(', '),
+                subject: finalSubject,
+                attachments: attachments.map((att) => ({
+                  filename: att.filename,
+                  mimeType: att.contentType,
+                  size: att.content.length,
+                })),
+              },
+              null,
+              2,
+            ),
+          },
+        ],
+      };
+    } catch (error) {
+      return this.handleError(error, 'gmail.forward');
     }
   };
 
