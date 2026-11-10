@@ -117,12 +117,19 @@ export const DOMAINS: DomainDef[] = [
       start: {
         type: 'string',
         description:
-          'Event start: ISO 8601 with offset for timed events (2026-11-13T09:27:00+01:00) or YYYY-MM-DD for all-day events'
+          'Event start: ISO 8601 with offset for timed events (2026-11-13T09:27:00+01:00) or YYYY-MM-DD for all-day events. For listEvents/findFreeTime: start of the time range (alias of timeMin).'
       },
       end: {
         type: 'string',
-        description: 'Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events'
+        description:
+          'Event end: ISO 8601 with offset for timed events or YYYY-MM-DD (exclusive) for all-day events. For listEvents/findFreeTime: end of the time range (alias of timeMax).'
       },
+      timeMin: { type: 'string', description: 'listEvents/findFreeTime: range start, RFC 3339 (default: now)' },
+      timeMax: {
+        type: 'string',
+        description: 'listEvents/findFreeTime: range end, RFC 3339 (default: 30 days from now)'
+      },
+      duration: { type: 'number', description: 'findFreeTime: slot length in minutes' },
       attendees: { type: 'array', description: 'Attendee email addresses' }
     },
     run: calendar
